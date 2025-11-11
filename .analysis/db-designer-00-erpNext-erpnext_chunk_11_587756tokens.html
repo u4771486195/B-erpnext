@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ERPNext Architecture Analysis - Chunk 11</title>
+<style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #111827; color: #d1d5db; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    .header { background-color: #1f2937; padding: 1rem 2rem; border-bottom: 1px solid #374151; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; }
+    h1 { color: white; margin: 0; }
+    .controls { display: flex; align-items: center; gap: 20px; }
+    .legend { display: flex; gap: 20px; font-size: 12px; align-items: center; }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .main-container { display: flex; flex-grow: 1; }
+    .panel { min-width: 150px; height: 100%; display: flex; flex-direction: column; position: relative; }
+    .panel:nth-child(1) { flex: 0 1 15%; }
+    .panel:nth-child(3) { flex: 1 1 70%; }
+    .panel:nth-child(5) { flex: 0 1 15%; }
+
+    .splitter { width: 6px; background-color: #374151; cursor: col-resize; flex-shrink: 0; z-index: 100; }
+    .splitter:hover { background-color: #4b5563; }
+    .panel-header { padding: 1rem; text-align: center; border-bottom: 1px solid #374151; background-color: #1f2937; }
+    .panel-header h2 { margin: 0; font-size: 1.5rem; }
+    .header-r2 { color: #fca5a5; }
+    .header-r3 { color: #86efac; }
+    .header-r4 { color: #c4b5fd; }
+    .canvas { position: relative; width: 100%; flex-grow: 1; overflow: hidden; cursor: grab; }
+    .canvas:active { cursor: grabbing; }
+    .connections { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+    .transform-container { position: absolute; top: 0; left: 0; transform-origin: 0 0; z-index: 2; }
+    
+    .node { position: absolute; border: 3px solid #4b5563; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); font-family: monospace; width: 280px; cursor: move; z-index: 10; user-select: none; padding-top: 30px; }
+    .node h3 { padding: 8px 12px 8px 12px; margin: 0; border-bottom: 1px solid rgba(0,0,0,0.2); border-radius: 8px 8px 0 0; font-size: 14px; color: white; word-break: break-all; }
+    .node h3 .path { font-size: 0.8em; color: #9ca3af; display: block; font-weight: normal; }
+    .node ul { list-style: none; padding: 0; margin: 0; }
+    .node li { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px; position: relative; }
+    .node li:last-child { border-bottom: none; }
+    .node .col-name { font-weight: 500; }
+    .node .col-type { margin-left: auto; color: #9ca3af; }
+
+    .db-node { background-color: rgba(196, 181, 253, 0.15); border-color: #a78bfa; }
+    .db-node h3 { background-color: #8b5cf6; }
+    
+    .ui-node { background-color: rgba(191, 219, 254, 0.15); border-color: #60a5fa; }
+    .ui-node h3 { background-color: #3b82f6; }
+
+    .code-node { background-color: rgba(134, 239, 172, 0.1); border-color: #4ade80; }
+    .code-node h3 { background-color: #22c55e; }
+
+    .service-node { background-color: rgba(252, 165, 165, 0.1); border-color: #f87171; }
+    .service-node h3 { background-color: #ef4444; }
+    
+    .icon-display { position: absolute; top: -32px; left: 50%; transform: translateX(-50%); font-size: 64px; z-index: 12; pointer-events: none; opacity: 0.8; }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>ERPNext - Architecture Analysis</h1>
+    <div class="controls">
+        <div class="legend">
+             <div class="legend-item"><svg width="10" height="10" style="background:#3b82f6; border-radius:3px;"></svg> UI/Frontend</div>
+            <div class="legend-item"><svg width="10" height="10" style="background:#22c55e; border-radius:3px;"></svg> Backend Logic</div>
+            <div class="legend-item"><svg width="10" height="10" style="background:#8b5cf6; border-radius:3px;"></svg> Data/Schema</div>
+            <div class="legend-item"><svg width="10" height="10" style="background:#ef4444; border-radius:3px;"></svg> Config/Service</div>
+        </div>
+    </div>
+</div>
+
+<div class="main-container">
+    <div class="panel">
+        <div class="panel-header"><h2 class="header-r2">Legacy</h2></div>
+        <div id="canvas-r2" class="canvas"><svg id="connections-r2" class="connections"></svg><div class="transform-container"></div></div>
+    </div>
+    <div class="splitter"></div>
+    <div class="panel">
+        <div class="panel-header"><h2 class="header-r3">ERPNext Engine</h2></div>
+        <div id="canvas-r3" class="canvas"><svg id="connections-r3" class="connections"></svg><div class="transform-container"></div></div>
+    </div>
+    <div class="splitter"></div>
+    <div class="panel">
+        <div class="panel-header"><h2 class="header-r4">Future</h2></div>
+        <div id="canvas-r4" class="canvas"><svg id="connections-r4" class="connections"></svg><div class="transform-container"></div></div>
+    </div>
+</div>
+
+<script>
+// ===================================================================================
+//
+//  ERPNext Schema - Chunk 11
+//
+// ===================================================================================
+const schemaR2 = { tables: [], relationships: [] };
+const schemaR4 = { tables: [], relationships: [] };
+
+const schemaR3 = {
+    tables: [
+        // Patches
+        { id: 1601, name: "Patch: Update Subscription to Auto Repeat", path: "patches/v10_1/transfer_subscription_to_auto_repeat.py", nodeType: "service", pos: { x: 50, y: 50 }, icon: "🔧", columns: [{ name: "Renames 'subscription' field to 'auto_repeat'" }, { name: "Migrates data from `Subscription` to `Auto Repeat`" }] },
+        { id: 1602, name: "Patch: Add default buying/selling terms", path: "patches/v12_0/add_default_buying_selling_terms_in_company.py", nodeType: "service", pos: { x: 50, y: 300 }, icon: "🔧", columns: [{ name: "Updates `Company` with default terms" }] },
+        { id: 1603, name: "Patch: Move Credit Limit to child table", path: "patches/v12_0/move_credit_limit_to_customer_credit_limit.py", nodeType: "service", pos: { x: 50, y: 500 }, icon: "🔧", columns: [{ name: "Migrates `Customer` credit limit to `Customer Credit Limit`" }] },
+        { id: 1604, name: "Patch: Move Item Tax to template", path: "patches/v12_0/move_item_tax_to_item_tax_template.py", nodeType: "service", pos: { x: 50, y: 700 }, icon: "🔧", columns: [{ name: "Migrates `Item Tax` to `Item Tax Template`" }] },
+        { id: 1605, name: "Patch: Rename Bank Reconciliation", path: "patches/v12_0/rename_bank_reconciliation.py", nodeType: "service", pos: { x: 50, y: 900 }, icon: "🔧", columns: [{ name: "Renames `Bank Reconciliation` to `Bank Clearance`" }] },
+        { id: 1606, name: "Patch: Create Accounting Dimensions", path: "patches/v13_0/create_accounting_dimensions_in_orders.py", nodeType: "service", pos: { x: 50, y: 1100 }, icon: "🔧", columns: [{ name: "Adds custom fields for dimensions to Orders/Receipts" }] },
+        { id: 1607, name: "Patch: Delete old reports", path: "patches/v13_0/delete_old_purchase_reports.py", nodeType: "service", pos: { x: 50, y: 1300 }, icon: "🗑️", columns: [{ name: "Deletes obsolete Purchase reports" }] },
+        { id: 1608, name: "Patch: Repost incorrect SL/GL", path: "patches/v13_0/item_reposting_for_incorrect_sl_and_gl.py", nodeType: "service", pos: { x: 50, y: 1500 }, icon: "🔁", columns: [{ name: "Triggers reposting for `Stock Ledger Entry`" }] },
+        { id: 1609, name: "Patch: Show Deprecation Warnings", path: "patches/v13_0/healthcare_deprecation_warning.py", nodeType: "service", pos: { x: 50, y: 1700 }, icon: "⚠️", columns: [{ name: "Prints warning for moved modules (Healthcare, HR, etc.)" }] },
+        { id: 1610, name: "Patch: Create Advance Payment Ledger", path: "patches/v15_0/create_advance_payment_ledger_records.py", nodeType: "service", pos: { x: 50, y: 1900 }, icon: "🔧", columns: [{ name: "Creates `Advance Payment Ledger Entry` from `Payment Entry`" }] },
+        { id: 1611, name: "Patch: Create Asset Depreciation Schedules", path: "patches/v15_0/create_asset_depreciation_schedules_from_assets.py", nodeType: "service", pos: { x: 50, y: 2100 }, icon: "🔧", columns: [{ name: "Migrates `Depreciation Schedule` to `Asset Depreciation Schedule`" }] },
+
+        // Manufacturing Core
+        { id: 1701, name: "BOM", path: "manufacturing/doctype/bom/bom.py", nodeType: "code", pos: { x: 450, y: 1000 }, icon: "📄", columns: [{ name: "class BOM(WebsiteGenerator)" }, { name: "validate()" }, { name: "on_submit()" }, { name: "update_cost()" }, { name: "get_exploded_items()" }, { name: "check_recursion()" }] },
+        { id: 1702, name: "Work Order", path: "manufacturing/doctype/work_order/work_order.py", nodeType: "code", pos: { x: 850, y: 1200 }, icon: "🏗️", columns: [{ name: "class WorkOrder(Document)" }, { name: "on_submit()" }, { name: "on_cancel()" }, { name: "update_status()" }, { name: "create_job_card()" }] },
+        { id: 1703, name: "Production Plan", path: "manufacturing/doctype/production_plan/production_plan.py", nodeType: "code", pos: { x: 450, y: 1500 }, icon: "📅", columns: [{ name: "class ProductionPlan(Document)" }, { name: "get_so_items()" }, { name: "make_work_order()" }, { name: "make_material_request()" }] },
+        { id: 1704, name: "Job Card", path: "manufacturing/doctype/job_card/job_card.py", nodeType: "code", pos: { x: 1250, y: 1350 }, icon: "📋", columns: [{ name: "class JobCard(Document)" }, { name: "on_submit()" }, { name: "validate_time_logs()" }, { name: "set_status()" }] },
+        { id: 1705, name: "Manufacturing Settings", path: "manufacturing/doctype/manufacturing_settings/manufacturing_settings.py", nodeType: "service", pos: { x: 450, y: 500 }, icon: "⚙️", columns: [{ name: "backflush_raw_materials_based_on" }, { name: "update_bom_costs_automatically" }, { name: "disable_capacity_planning" }] },
+        { id: 1706, name: "Stock Entry", path: "(loaded from other chunk)", nodeType: "code", pos: { x: 1650, y: 1350 }, icon: "📦", columns: [{ name: "purpose: Material Transfer" }, { name: "purpose: Manufacture" }] },
+        { id: 1707, name: "Sales Forecast", path: "manufacturing/doctype/sales_forecast/sales_forecast.py", nodeType: "code", pos: { x: 450, y: 2000 }, icon: "🔮", columns: [{ name: "generate_demand()" }, { name: "create_mps()" }] },
+        { id: 1708, name: "Master Production Schedule", path: "manufacturing/doctype/master_production_schedule/master_production_schedule.py", nodeType: "code", pos: { x: 850, y: 2000 }, icon: " MASTER", columns: [{ name: "get_actual_demand()" }, { name: "make_mrp()" }] },
+        { id: 1709, name: "BOM Update Tool", path: "manufacturing/doctype/bom_update_tool/bom_update_tool.py", nodeType: "code", pos: { x: 450, y: 2400 }, icon: "🔄", columns: [{ name: "enqueue_replace_bom()" }, { name: "enqueue_update_cost()" }] },
+        { id: 1710, name: "BOM Update Log", path: "manufacturing/doctype/bom_update_log/bom_update_log.py", nodeType: "code", pos: { x: 850, y: 2400 }, icon: "📝", columns: [{ name: "process_boms_cost_level_wise()" }, { name: "resume_bom_cost_update_jobs()" }] },
+
+        // Schemas
+        { id: 1801, name: "BOM Schema", path: "doctype/bom/bom.json", nodeType: "db", pos: { x: 2050, y: 1000 }, icon: "📝", columns: [{ name: "items", type: "Table" }, { name: "operations", type: "Table" }, { name: "scrap_items", type: "Table" }] },
+        { id: 1802, name: "Work Order Schema", path: "doctype/work_order/work_order.json", nodeType: "db", pos: { x: 2050, y: 1200 }, icon: "📝", columns: [{ name: "production_item" }, { name: "bom_no" }, { name: "required_items", type: "Table" }] },
+        { id: 1803, name: "Production Plan Schema", path: "doctype/production_plan/production_plan.json", nodeType: "db", pos: { x: 2050, y: 1500 }, icon: "📝", columns: [{ name: "po_items", type: "Table" }, { name: "mr_items", type: "Table" }, { name: "sales_orders", type: "Table" }] },
+        { id: 1804, name: "Job Card Schema", path: "doctype/job_card/job_card.json", nodeType: "db", pos: { x: 2050, y: 1350 }, icon: "📝", columns: [{ name: "work_order" }, { name: "operation" }, { name: "time_logs", type: "Table" }] },
+
+        // UI
+        { id: 1901, name: "BOM UI", path: "doctype/bom/bom.js", nodeType: "ui", pos: { x: 2450, y: 1000 }, icon: "💻", columns: [{ name: "update_cost()" }, { name: "make_work_order()" }] },
+        { id: 1902, name: "Work Order UI", path: "doctype/work_order/work_order.js", nodeType: "ui", pos: { x: 2450, y: 1200 }, icon: "💻", columns: [{ name: "make_se()" }, { name: "make_job_card()" }] },
+        { id: 1903, name: "Production Plan UI", path: "doctype/production_plan/production_plan.js", nodeType: "ui", pos: { x: 2450, y: 1500 }, icon: "💻", columns: [{ name: "get_items()" }, { name: "make_work_order()" }] },
+        { id: 1904, name: "Manufacturing Workspace", path: "workspace/manufacturing.json", nodeType: "ui", pos: { x: 2450, y: 500 }, icon: "🏭", columns: [{ name: "Shortcuts (BOM, Work Order)" }, { name: "Reports & Masters" }] }
+    ],
+    relationships: [
+        // Planning Flow
+        { from: { table: "Sales Forecast" }, to: { table: "Master Production Schedule" }, type: "flow", label: "Creates" },
+        { from: { table: "Master Production Schedule" }, to: { table: "Production Plan" }, type: "flow", label: "Can Create" }, // Implied flow
+        { from: { table: "Production Plan UI" }, to: { table: "Production Plan" }, type: "flow" },
+        { from: { table: "Production Plan", column: "get_so_items()" }, to: { table: "Sales Order" }, type: "read", label: "Reads" },
+        { from: { table: "Production Plan", column: "make_work_order()" }, to: { table: "Work Order" }, type: "write", label: "Creates" },
+        { from: { table: "Production Plan", column: "make_material_request()" }, to: { table: "Material Request" }, type: "write", label: "Creates" },
+
+        // Execution Flow
+        { from: { table: "Work Order UI" }, to: { table: "Work Order" }, type: "flow" },
+        { from: { table: "Work Order", column: "get_items_and_operations_from_bom()" }, to: { table: "BOM" }, type: "read", label: "Uses" },
+        { from: { table: "Work Order", column: "create_job_card()" }, to: { table: "Job Card" }, type: "write", label: "Creates" },
+        { from: { table: "Work Order", column: "make_stock_entry()" }, to: { table: "Stock Entry" }, type: "write", label: "Creates" },
+        { from: { table: "Job Card" }, to: { table: "Work Order" }, type: "read", label: "Updates" },
+        { from: { table: "Job Card" }, to: { table: "Stock Entry" }, type: "write", label: "Can Create" },
+
+        // BOM & Updates
+        { from: { table: "BOM UI" }, to: { table: "BOM" }, type: "flow" },
+        { from: { table: "BOM Update Tool" }, to: { table: "BOM Update Log" }, type: "write", label: "Creates" },
+        { from: { table: "BOM Update Log", column: "process_boms_cost_level_wise()" }, to: { table: "BOM" }, type: "write", label: "Updates Cost" },
+        { from: { table: "BOM Update Log", column: "run_replace_bom_job()" }, to: { table: "BOM" }, type: "write", label: "Replaces" },
+        
+        // Patches
+        { from: { table: "Patch: Update Subscription to Auto Repeat" }, to: { table: "Auto Repeat" }, type: "write", label: "Migrates to" },
+        { from: { table: "Patch: Create Accounting Dimensions" }, to: { table: "Sales Order" }, type: "write", label: "Modifies" },
+        { from: { table: "Patch: Repost incorrect SL/GL" }, to: { table: "Stock Ledger Entry" }, type: "write", label: "Reposts" },
+        { from: { table: "Patch: Create Advance Payment Ledger" }, to: { table: "Payment Entry" }, type: "read", label: "Reads From" },
+        
+        // MVC
+        { from: { table: "BOM" }, to: { table: "BOM Schema" } },
+        { from: { table: "Work Order" }, to: { table: "Work Order Schema" } },
+        { from: { table: "Production Plan" }, to: { table: "Production Plan Schema" } },
+        { from: { table: "Job Card" }, to: { table: "Job Card Schema" } }
+    ]
+};
+
+
+
+// ===================================================================================
+//  RENDERING LOGIC
+// ===================================================================================
+function initializeCanvas(canvasId, schema) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const transformContainer = canvas.querySelector('.transform-container');
+    const svg = canvas.querySelector('.connections');
+    let state = { scale: 0.7, panX: 50, panY: 50, isPanning: false, lastMouse: { x: 0, y: 0 } };
+
+    function render() {
+        if (!transformContainer || !svg) return;
+        transformContainer.innerHTML = '';
+        transformContainer.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+        
+        schema.tables.forEach(table => {
+            const node = document.createElement('div');
+            node.id = `${canvasId}-${table.id}`;
+            node.classList.add('node', `${table.nodeType}-node`);
+            node.style.left = `${table.pos.x}px`;
+            node.style.top = `${table.pos.y}px`;
+
+            const header = document.createElement('h3');
+            const pathSpan = table.path ? `<span class="path">${table.path}</span>` : '';
+            header.innerHTML = `${table.name}${pathSpan}`;
+
+            const list = document.createElement('ul');
+            list.innerHTML = table.columns.map(col => {
+                const colName = typeof col === 'string' ? col : col.name;
+                const colType = typeof col === 'string' ? '' : (col.type || '');
+                const colId = colName.replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                return `<li id="${canvasId}-${table.id}-${colId}"><span class="col-name">${colName}</span>${colType ? `<span class="col-type">${colType}</span>` : ''}</li>`;
+            }).join('');
+            
+            if (table.icon) {
+                const iconDisplay = document.createElement('div');
+                iconDisplay.className = 'icon-display';
+                iconDisplay.textContent = table.icon;
+                node.appendChild(iconDisplay);
+            }
+
+            node.appendChild(header);
+            node.appendChild(list);
+            transformContainer.appendChild(node);
+        });
+        updateConnections();
+    }
+    
+    function getElementPortPosition(elId) {
+        const el = document.getElementById(elId);
+        if (!el) return null;
+        const parentNode = el.closest('.node');
+        if (!parentNode) return null;
+        const isNodeConnection = el.classList.contains('node');
+        
+        const parentRect = parentNode.getBoundingClientRect();
+        const elRect = isNodeConnection ? parentRect : el.getBoundingClientRect();
+        const canvasRect = canvas.getBoundingClientRect();
+        
+        const y = isNodeConnection ? (parentRect.top - canvasRect.top + parentRect.height / 2) : (elRect.top - canvasRect.top + elRect.height / 2);
+        const leftX = (parentRect.left - canvasRect.left);
+        const rightX = (parentRect.right - canvasRect.left);
+
+        return { left: {x: leftX, y: y}, right: {x: rightX, y: y} };
+    }
+
+    function updateConnections() {
+        if (!svg) return;
+        svg.innerHTML = `<defs>
+            <marker id="arrowhead-read-${canvasId}" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6b7283" /></marker>
+            <marker id="arrowhead-write-${canvasId}" markerWidth="12" markerHeight="9" refX="10" refY="4.5" orient="auto"><polygon points="0 0, 12 4.5, 0 9" fill="#86efac" /></marker>
+            <marker id="arrowhead-flow-${canvasId}" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#9ca3af" /></marker>
+        </defs>`;
+        
+        const idMap = new Map(schema.tables.map(t => [t.name, t.id]));
+
+        schema.relationships.forEach(rel => {
+            const fromTableName = typeof rel.from === 'string' ? rel.from : rel.from.table;
+            const toTableName = typeof rel.to === 'string' ? rel.to : rel.to.table;
+
+            const fromId = idMap.get(fromTableName);
+            const toId = idMap.get(toTableName);
+            if(!fromId || !toId) return;
+
+            let fromColName = (typeof rel.from === 'object' && rel.from.column) ? (typeof rel.from.column === 'string' ? rel.from.column : (rel.from.column.name || '')) : '';
+            let toColName = (typeof rel.to === 'object' && rel.to.column) ? (typeof rel.to.column === 'string' ? rel.to.column : (rel.to.column.name || '')) : '';
+            
+            let fromElId = fromColName ? `${canvasId}-${fromId}-${fromColName.replace(/\s+/g, '-').replace(/[^\w-]/g, '')}` : `${canvasId}-${fromId}`;
+            if (!document.getElementById(fromElId)) fromElId = `${canvasId}-${fromId}`;
+
+            let toElId = toColName ? `${canvasId}-${toId}-${toColName.replace(/\s+/g, '-').replace(/[^\w-]/g, '')}` : `${canvasId}-${toId}`;
+            if (!document.getElementById(toElId)) toElId = `${canvasId}-${toId}`;
+            
+            const fromPorts = getElementPortPosition(fromElId);
+            const toPorts = getElementPortPosition(toElId);
+            if (!fromPorts || !toPorts) return;
+
+            const fromPos = toPorts.right.x < fromPorts.left.x ? fromPorts.left : fromPorts.right;
+            const toPos = toPorts.right.x < fromPorts.left.x ? toPorts.right : toPorts.left;
+            
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', fromPos.x); line.setAttribute('y1', fromPos.y);
+            line.setAttribute('x2', toPos.x); line.setAttribute('y2', toPos.y);
+
+            const type = rel.type || 'read';
+
+            if (type === 'write') {
+                line.setAttribute('stroke', '#86efac'); line.setAttribute('stroke-width', 4); line.setAttribute('marker-end', `url(#arrowhead-write-${canvasId})`);
+            } else if (type === 'flow') {
+                line.setAttribute('stroke', '#9ca3af'); line.setAttribute('stroke-width', 2); line.setAttribute('stroke-dasharray', `6,6`); line.setAttribute('marker-end', `url(#arrowhead-flow-${canvasId})`);
+            } else {
+                line.setAttribute('stroke', '#6b7283'); line.setAttribute('stroke-width', 2); line.setAttribute('marker-end', `url(#arrowhead-read-${canvasId})`);
+            }
+            svg.appendChild(line);
+        });
+    }
+    
+    let activeNode = null, offset = { x: 0, y: 0 };
+    canvas.addEventListener('mousedown', (e) => {
+        const targetNode = e.target.closest('.node');
+        if (targetNode) {
+            activeNode = targetNode;
+            const tableData = schema.tables.find(t => `${canvasId}-${t.id}` === activeNode.id);
+            if (!tableData) return;
+            const mouseX = (e.clientX - canvas.getBoundingClientRect().left - state.panX) / state.scale;
+            const mouseY = (e.clientY - canvas.getBoundingClientRect().top - state.panY) / state.scale;
+            offset.x = mouseX - tableData.pos.x;
+            offset.y = mouseY - tableData.pos.y;
+            activeNode.style.zIndex = 11;
+        } else {
+            state.isPanning = true;
+            state.lastMouse.x = e.clientX;
+            state.lastMouse.y = e.clientY;
+        }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (activeNode) {
+            e.preventDefault();
+            const mouseX = (e.clientX - canvas.getBoundingClientRect().left - state.panX) / state.scale;
+            const mouseY = (e.clientY - canvas.getBoundingClientRect().top - state.panY) / state.scale;
+            const tableData = schema.tables.find(t => `${canvasId}-${t.id}` === activeNode.id);
+            if (tableData) {
+                tableData.pos.x = mouseX - offset.x;
+                tableData.pos.y = mouseY - offset.y;
+                activeNode.style.left = `${tableData.pos.x}px`;
+                activeNode.style.top = `${tableData.pos.y}px`;
+                updateConnections();
+            }
+        } else if (state.isPanning) {
+            e.preventDefault();
+            const dx = e.clientX - state.lastMouse.x;
+            const dy = e.clientY - state.lastMouse.y;
+            state.panX += dx;
+            state.panY += dy;
+            transformContainer.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+            updateConnections();
+            state.lastMouse.x = e.clientX;
+            state.lastMouse.y = e.clientY;
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (activeNode) { activeNode.style.zIndex = 10; activeNode = null; }
+        state.isPanning = false;
+    });
+    
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        const oldScale = state.scale;
+        const zoomFactor = 1.1;
+        state.scale *= e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
+        state.scale = Math.max(0.1, Math.min(state.scale, 2.5));
+        state.panX = mouseX - (mouseX - state.panX) * (state.scale / oldScale);
+        state.panY = mouseY - (mouseY - state.panY) * (state.scale / oldScale);
+        render();
+    });
+
+    render();
+    return { render, updateConnections };
+}
+
+const canvases = [
+    initializeCanvas('canvas-r2', schemaR2),
+    initializeCanvas('canvas-r3', schemaR3),
+    initializeCanvas('canvas-r4', schemaR4)
+];
+
+document.querySelectorAll('.splitter').forEach(splitter => {
+    splitter.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const prevPanel = splitter.previousElementSibling;
+        const startX = e.clientX;
+        const initialPrevWidth = prevPanel.getBoundingClientRect().width;
+        
+        const onMouseMove = (moveEvent) => {
+            let newPrevWidth = initialPrevWidth + (moveEvent.clientX - startX);
+            const MIN_WIDTH = 150;
+            if (newPrevWidth < MIN_WIDTH) newPrevWidth = MIN_WIDTH;
+            prevPanel.style.flex = `0 0 ${newPrevWidth}px`;
+            canvases.forEach(c => c && c.render());
+        };
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    });
+});
+
+window.addEventListener('resize', () => {
+    canvases.forEach(c => c && c.render());
+});
+</script>
+
+</body>
+</html>
