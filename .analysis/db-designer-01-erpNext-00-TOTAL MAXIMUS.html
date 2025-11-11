@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ERPNext - Master Architecture</title>
+<style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #111827; color: #d1d5db; margin: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    .header { background-color: #1f2937; padding: 1rem 2rem; border-bottom: 1px solid #374151; flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; }
+    h1 { color: white; margin: 0; }
+    .controls { display: flex; align-items: center; gap: 20px; }
+    .legend { display: flex; gap: 20px; font-size: 12px; align-items: center; }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .main-container { display: flex; flex-grow: 1; }
+    .panel { min-width: 150px; height: 100%; display: flex; flex-direction: column; position: relative; }
+    .panel:nth-child(1) { flex: 0 1 15%; }
+    .panel:nth-child(3) { flex: 1 1 70%; }
+    .panel:nth-child(5) { flex: 0 1 15%; }
+
+    .splitter { width: 6px; background-color: #374151; cursor: col-resize; flex-shrink: 0; z-index: 100; }
+    .splitter:hover { background-color: #4b5563; }
+    .panel-header { padding: 1rem; text-align: center; border-bottom: 1px solid #374151; background-color: #1f2937; }
+    .panel-header h2 { margin: 0; font-size: 1.5rem; }
+    .header-r2 { color: #fca5a5; }
+    .header-r3 { color: #86efac; }
+    .header-r4 { color: #c4b5fd; }
+    .canvas { position: relative; width: 100%; flex-grow: 1; overflow: hidden; cursor: grab; }
+    .canvas:active { cursor: grabbing; }
+    .connections { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+    .transform-container { position: absolute; top: 0; left: 0; transform-origin: 0 0; z-index: 2; }
+    
+    .node { position: absolute; border: 3px solid #4b5563; border-radius: 8px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); font-family: monospace; width: 280px; cursor: move; z-index: 10; user-select: none; padding-top: 30px; }
+    .node h3 { padding: 8px 12px 8px 12px; margin: 0; border-bottom: 1px solid rgba(0,0,0,0.2); border-radius: 8px 8px 0 0; font-size: 14px; color: white; word-break: break-all; }
+    .node h3 .path { font-size: 0.8em; color: #9ca3af; display: block; font-weight: normal; }
+    .node ul { list-style: none; padding: 0; margin: 0; }
+    .node li { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 12px; position: relative; }
+    .node li:last-child { border-bottom: none; }
+    .node .col-name { font-weight: 500; }
+    .node .col-type { margin-left: auto; color: #9ca3af; }
+
+    .db-node { background-color: rgba(196, 181, 253, 0.15); border-color: #a78bfa; }
+    .db-node h3 { background-color: #8b5cf6; }
+    
+    .ui-node { background-color: rgba(191, 219, 254, 0.15); border-color: #60a5fa; }
+    .ui-node h3 { background-color: #3b82f6; }
+
+    .code-node { background-color: rgba(134, 239, 172, 0.1); border-color: #4ade80; }
+    .code-node h3 { background-color: #22c55e; }
+
+    .service-node { background-color: rgba(252, 165, 165, 0.1); border-color: #f87171; }
+    .service-node h3 { background-color: #ef4444; }
+    
+    .icon-display { position: absolute; top: -32px; left: 50%; transform: translateX(-50%); font-size: 64px; z-index: 12; pointer-events: none; opacity: 0.8; }
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>ERPNext - Master Architecture</h1>
+    <div class="controls">
+        <div class="legend">
+             <div class="legend-item"><svg width="10" height="10" style="background:#3b82f6; border-radius:3px;"></svg> UI/Frontend</div>
+            <div class="legend-item"><svg width="10" height="10" style="background:#22c55e; border-radius:3px;"></svg> Backend Logic</div>
+            <div class="legend-item"><svg width="10" height="10" style="background:#8b5cf6; border-radius:3px;"></svg> Data/Schema</div>
+            <div class="legend-item"><svg width="10" height="10" style="background:#ef4444; border-radius:3px;"></svg> Config/Service</div>
+        </div>
+    </div>
+</div>
+
+<div class="main-container">
+    <div class="panel">
+        <div class="panel-header"><h2 class="header-r2">Legacy</h2></div>
+        <div id="canvas-r2" class="canvas"><svg id="connections-r2" class="connections"></svg><div class="transform-container"></div></div>
+    </div>
+    <div class="splitter"></div>
+    <div class="panel">
+        <div class="panel-header"><h2 class="header-r3">ERPNext Engine</h2></div>
+        <div id="canvas-r3" class="canvas"><svg id="connections-r3" class="connections"></svg><div class="transform-container"></div></div>
+    </div>
+    <div class="splitter"></div>
+    <div class="panel">
+        <div class="panel-header"><h2 class="header-r4">Future</h2></div>
+        <div id="canvas-r4" class="canvas"><svg id="connections-r4" class="connections"></svg><div class="transform-container"></div></div>
+    </div>
+</div>
+
+<script>
+// ===================================================================================
+//
+//  MASTER DATA SOURCES
+//
+// ===================================================================================
+/*
+    ARCHITECTURAL INSIGHTS FOR FUTURE AI ANALYSIS:
+    This file visualizes the comprehensive architecture of the ERPNext system. The platform is built on the Frappe Framework, which follows a "metadata-driven" or "model-view-controller-like" architecture. The core principle is "Everything is a DocType," where both master data (like Customers, Items) and transactional data (like Sales Invoices) are defined as DocTypes, creating a consistent and highly extensible system.
+
+    **Overall Architectural Philosophy:**
+    ERPNext's architecture is defined by the Frappe Framework's "DocType" concept, which separates a business object's definition into three key files: a Python file for server-side logic, a JSON file for the data schema, and a JavaScript file for client-side behavior. This modular "DocType Trio" is the fundamental building block of the entire system.
+
+    - **DocType Trio (The Core Pattern):**
+        - **Model/Schema (`.json`):** This file defines the database table for a DocType, including its fields, data types, links to other DocTypes, permissions, and UI properties. It is the single source of truth for the data model.
+        - **Controller/Backend Logic (`.py`):** This Python class, inheriting from `frappe.model.document.Document`, contains all server-side business logic. It handles validation (`validate`), lifecycle hooks (`on_submit`, `on_cancel`), and interactions with other system components.
+        - **View/Client-Side Logic (`.js`):** This file controls the frontend behavior of a DocType's form, handling UI events (`onload`, `refresh`), custom button logic, fetching data for dynamic fields, and client-side validation.
+
+    - **Inheritance and Code Reusability:** A powerful architectural feature is the use of controller class inheritance. Core business logic is encapsulated in base classes (e.g., `AccountsController`, `StockController`), which are then inherited by transactional DocTypes. For example, `SellingController` inherits from `StockController`, which itself inherits from `AccountsController`. This creates a layered, reusable, and maintainable codebase where common functions like updating the stock ledger or creating general ledger entries are defined once.
+
+    - **Data-Driven Configuration and Localization:** Much of the system's flexibility comes from its data-driven nature. Internationalization, for instance, is not hard-coded. Country-specific "Chart of Accounts" are defined as `.json` files that can be imported during setup. Similarly, UI text labels and messages are translated via `.po` and `.pot` files, allowing the entire application to be localized without changing core code.
+
+    - **Event-Driven Programming with Hooks:** The `hooks.py` file in each app acts as a central dispatcher for the system. It maps DocType events (e.g., `on_submit` for a `SalesInvoice`) to specific Python functions, registers scheduled jobs, and includes necessary JS/CSS files. This provides a clean mechanism for extending and integrating different modules.
+
+    **Key File Types and Their Roles:**
+    - **Python Files (`.py`):**
+        - **DocType Logic (`sales_invoice.py`):** Contains the primary Python class for a DocType, handling its backend logic and state transitions.
+        - **Controller Classes (`stock_controller.py`):** Base classes providing shared methods for a group of related DocTypes (e.g., all transactions affecting inventory).
+        - **Core Utilities & Reports (`general_ledger.py`, `party.py`):** Contain shared business logic, queries, and the backend code for generating script reports.
+        - **Patches:** Scripts located in `patches/` folders that handle data migration and schema updates between different versions of ERPNext.
+
+    - **JSON Files (`.json`):**
+        - **DocType Schema (`sales_invoice.json`):** Defines the fields, data types, relationships (links), and permissions for a DocType.
+        - **Configuration & Data (`manufacturing.json`, `de_skr03.json`):** Define Workspace layouts, dashboards, and data templates like country-specific Chart of Accounts.
+        - **Onboarding Steps:** Small JSON files that provide guided setup instructions for new users.
+
+    - **JavaScript Files (`.js`):**
+        - **DocType UI Logic (`sales_invoice.js`):** Manages the frontend behavior and user interactions for a specific DocType form.
+        - **Page Scripts (`point_of_sale.js`):** Provide the logic for complex, single-page applications like the Point of Sale interface.
+        - **Query Reports (`sales_analytics.js`):** Define the frontend filters and formatting for script reports.
+
+    - **Configuration & Service Files:**
+        - `pyproject.toml` / `package.json`: Define Python and JavaScript library dependencies.
+        - `.po` / `.pot` Files: Contain the source text and translations for internationalization (i18n), enabling the entire UI to be displayed in multiple languages.
+        - DevOps Files (`.mergify.yml`, `.pre-commit-config.yaml`): Automate development processes like merging pull requests and code quality checks.
+
+    **Key Business Process Flows:**
+    - **Order-to-Cash Cycle:**
+        1.  A **Lead** or **Opportunity** is captured in the CRM module.
+        2.  A **Quotation** is created and submitted to the customer.
+        3.  Upon acceptance, a **Sales Order** is created. This document uses the `SellingController` and `StockController` to reserve inventory if configured.
+        4.  A **Delivery Note** is created from the Sales Order, which triggers the `StockController` to update the `Stock Ledger` and decrease inventory levels.
+        5.  A **Sales Invoice** is created, which uses the `AccountsController` to post entries to the **General Ledger** (debiting Accounts Receivable, crediting Income).
+        6.  Finally, a **Payment Entry** is made against the Sales Invoice, clearing the receivable and debiting a bank account.
+
+    - **Procure-to-Pay Cycle:**
+        1.  A **Material Request** can be generated manually or from a Sales Order.
+        2.  This leads to a **Purchase Order** being sent to a **Supplier**.
+        3.  Goods are received via a **Purchase Receipt**, which uses the `StockController` to update the `Stock Ledger` and increase inventory.
+        4.  A **Purchase Invoice** is created against the Purchase Order or Receipt, using the `AccountsController` to post to the **General Ledger** (crediting Accounts Payable).
+
+    - **Manufacturing Flow:**
+        1.  A **Production Plan** can be generated from Sales Orders or a **Sales Forecast**.
+        2.  The Production Plan creates one or more **Work Orders** for the finished goods.
+        3.  The Work Order pulls the material list from a **Bill of Materials (BOM)**.
+        4.  Manufacturing is executed through **Stock Entry** transactions with a purpose of "Material Transfer for Manufacture" (to move raw materials to a Work-in-Progress warehouse) and "Manufacture" (to consume raw materials and create the finished good). These entries heavily interact with the `StockController` and `Stock Ledger`.
+        5.  **Job Cards** and **Timesheets** can be used to track operational time and cost.
+*/
+const schemaR2 = { tables: [], relationships: [] };
+const schemaR4 = { tables: [], relationships: [] };
+
+const schemaR3 = {
+    tables: [
+        { id: 1, name: "pyproject.toml", path: "pyproject.toml", nodeType: "service", pos: { x: 1250, y: 50 }, icon: "🐍", columns: [ { name: "pandas" }, { name: "rapidfuzz" }, { name: "holidays" }, { name: "googlemaps" }, { name: "plaid-python" } ] },
+        { id: 2, name: "package.json", path: "package.json", nodeType: "service", pos: { x: 1250, y: 350 }, icon: "📦", columns: [ { name: "onscan.js" } ] },
+        { id: 3, name: ".pre-commit-config.yaml", path: ".pre-commit-config.yaml", nodeType: "service", pos: { x: 1250, y: 650 }, icon: "🛡️", columns: [ { name: "ruff" }, { name: "prettier" }, { name: "eslint" } ] },
+        { id: 4, name: ".mergify.yml", path: ".mergify.yml", nodeType: "service", pos: { x: 1250, y: 950 }, icon: "🔄", columns: [ { name: "pull_request_rules" }, { name: "Automatic merge" }, { name: "backport" } ] },
+        { id: 5, name: "license.txt", path: "license.txt", nodeType: "service", pos: { x: 1250, y: 1250 }, icon: "📄", columns: [ { name: "GNU GENERAL PUBLIC LICENSE" } ] },
+        { id: 6, name: "SalesInvoice", path: "erpnext/accounts/doctype/sales_invoice/sales_invoice.py", nodeType: "code", pos: { x: 450, y: 50 }, icon: "🧾", columns: [ { name: "class SalesInvoice(SellingController)" }, { name: "validate()" }, { name: "on_submit()" }, { name: "on_cancel()" }, { name: "get_gl_entries()" } ] },
+        { id: 7, name: "POSInvoice", path: "erpnext/accounts/doctype/pos_invoice/pos_invoice.py", nodeType: "code", pos: { x: 450, y: 350 }, icon: "🛒", columns: [ { name: "class POSInvoice(SalesInvoice)" }, { name: "set_pos_fields()" }, { name: "make_sales_return()" } ] },
+        { id: 8, name: "general_ledger.py", path: "erpnext/accounts/general_ledger.py", nodeType: "code", pos: { x: 450, y: 650 }, icon: "📚", columns: [ { name: "make_gl_entries()" }, { name: "make_reverse_gl_entries()" } ] },
+        { id: 9, name: "party.py", path: "erpnext/accounts/party.py", nodeType: "code", pos: { x: 450, y: 950 }, icon: "👥", columns: [ { name: "get_party_details()" }, { name: "get_party_account()" }, { name: "get_due_date()" } ] },
+        { id: 10, name: "accounts_utils.py", path: "erpnext/accounts/utils.py", nodeType: "code", pos: { x: 450, y: 1250 }, icon: "🛠️", columns: [ { name: "get_fiscal_year()" }, { name: "get_balance_on()" }, { name: "create_payment_ledger_entry()" } ] },
+        { id: 11, name: "PricingRule", path: "erpnext/accounts/doctype/pricing_rule/pricing_rule.py", nodeType: "code", pos: { x: 450, y: 1550 }, icon: "💲", columns: [ { name: "apply_pricing_rule()" } ] },
+        { id: 12, name: "Subscription", path: "erpnext/accounts/doctype/subscription/subscription.py", nodeType: "code", pos: { x: 450, y: 1850 }, icon: "🔄", columns: [ { name: "process()" }, { name: "generate_invoice()" }, { name: "cancel_subscription()" } ] },
+        { id: 13, name: "book_appointment.py", path: "erpnext/www/book_appointment/index.py", nodeType: "code", pos: { x: 450, y: 2150 }, icon: "📅", columns: [ { name: "get_appointment_slots()" }, { name: "create_appointment()" } ] },
+        { id: 14, name: "hooks.py", path: "erpnext/hooks.py", nodeType: "code", pos: { x: 450, y: 2450 }, icon: "🪝", columns: [ { name: "app_name = 'erpnext'" }, { name: "app_include_js" }, { name: "doc_events" }, { name: "scheduler_events" } ] },
+        { id: 15, name: "Sales Invoice Schema", path: "sales_invoice/sales_invoice.json", nodeType: "db", pos: { x: 850, y: 50 }, icon: "📝", columns: [ { name: "customer", type: "Link" }, { name: "items", type: "Table" }, { name: "taxes", type: "Table" } ] },
+        { id: 16, name: "POS Invoice Schema", path: "pos_invoice/pos_invoice.json", nodeType: "db", pos: { x: 850, y: 350 }, icon: "📝", columns: [ { name: "pos_profile", type: "Link" } ] },
+        { id: 17, name: "Sales Invoice UI", path: "sales_invoice/sales_invoice.js", nodeType: "ui", pos: { x: 50, y: 50 }, icon: "💻", columns: [ { name: "refresh()" }, { name: "customer()" }, { name: "make_payment_entry()" } ] },
+        { id: 18, name: "POS Invoice UI", path: "pos_invoice/pos_invoice.js", nodeType: "ui", pos: { x: 50, y: 350 }, icon: "💻", columns: [ { name: "onload()" }, { name: "set_pos_data()" }, { name: "make_sales_return()" } ] },
+        { id: 19, name: "Book Appointment Page", path: "book_appointment/index.html", nodeType: "ui", pos: { x: 50, y: 650 }, icon: "🌐", columns: [ { name: "{% block page_content %}" } ] },
+        { id: 20, name: "Book Appointment Logic", path: "book_appointment/index.js", nodeType: "ui", pos: { x: 50, y: 950 }, icon: "💻", columns: [ { name: "initialise_select_date()" }, { name: "submit()" } ] },
+        { id: 21, name: "Bank Statement Import UI", path: "accounts/doctype/bank_statement_import/bank_statement_import.js", nodeType: "ui", pos: { x: 50, y: 1250 }, icon: " Mapextract", columns: [ { name: "start_import()" }, { name: "convert_mt940_to_csv()" } ] },
+        { id: 22, name: "Bank Statement Import Logic", path: "accounts/doctype/bank_statement_import/bank_statement_import.py", nodeType: "code", pos: { x: 450, y: 2750 }, icon: " Mapextract", columns: [ { name: "class BankStatementImport(DataImport)" }, { name: "start_import() -> enqueue" }, { name: "start_import() -> (background job)" } ] },
+        { id: 23, name: "Bank Statement Import Schema", path: "accounts/doctype/bank_statement_import/bank_statement_import.json", nodeType: "db", pos: { x: 850, y: 650 }, icon: "📝", columns: [ { name: "import_file", type: "Attach" }, { name: "bank_account", type: "Link" }, { name: "status", type: "Select" } ] },
+        { id: 24, name: "MT940 Library", path: "(external library)", nodeType: "service", pos: { x: 1250, y: 1550 }, icon: "📦", columns: [ { name: "mt940.parse()" } ] },
+        { id: 25, name: "Bank Transaction Schema", path: "accounts/doctype/bank_transaction/bank_transaction.json", nodeType: "db", pos: { x: 850, y: 950 }, icon: "🏦", columns: [ { name: "date", type: "Date" }, { name: "deposit", type: "Currency" }, { name: "withdrawal", type: "Currency" }, { name: "unallocated_amount" } ] },
+        { id: 26, name: "Payment Request UI", path: "accounts/doctype/payment_request/payment_request.js", nodeType: "ui", pos: { x: 50, y: 1550 }, icon: "💳", columns: [ { name: "Create Payment Entry" }, { name: "is_a_subscription" } ] },
+        { id: 27, name: "Payment Request Logic", path: "accounts/doctype/payment_request/payment_request.py", nodeType: "code", pos: { x: 450, y: 3050 }, icon: "💳", columns: [ { name: "set_as_paid() -> create_payment_entry()" }, { name: "get_payment_url()" }, { name: "create_subscription()" } ] },
+        { id: 28, name: "Payment Request Schema", path: "accounts/doctype/payment_request/payment_request.json", nodeType: "db", pos: { x: 850, y: 1250 }, icon: "📝", columns: [ { name: "is_a_subscription", type: "Check" }, { name: "subscription_plans", type: "Table" }, { name: "status", type: "Select" } ] },
+        { id: 29, name: "Payment Entry Schema", path: "accounts/doctype/payment_entry/payment_entry.json", nodeType: "db", pos: { x: 850, y: 1550 }, icon: "💵", columns: [ { name: "payment_type", type: "Select" }, { name: "party", type: "Dynamic Link" }, { name: "paid_amount", type: "Currency" }, { name: "references", type: "Table" }, { name: "deductions", type: "Table" } ] },
+        { id: 30, name: "Subscription Plan Schema", path: "accounts/doctype/subscription_plan/subscription_plan.json", nodeType: "db", pos: { x: 850, y: 1850 }, icon: "🔄", columns: [ { name: "plan_name", type: "Data" }, { name: "cost", type: "Currency" }, { name: "billing_interval", type: "Select" } ] },
+        { id: 31, name: "POS Closing Entry Logic", path: "accounts/doctype/pos_closing_entry/pos_closing_entry.py", nodeType: "code", pos: { x: 450, y: 3350 }, icon: "🧾", columns: [ { name: "on_submit() -> consolidate_pos_invoices()" } ] },
+        { id: 32, name: "POS Invoice Merge Log Logic", path: "accounts/doctype/pos_invoice_merge_log/pos_invoice_merge_log.py", nodeType: "code", pos: { x: 450, y: 3650 }, icon: "🧾", columns: [ { name: "consolidate_pos_invoices()" }, { name: "on_submit() -> process_merging_into_sales_invoice()" } ] },
+        { id: 33, name: "Purchase Invoice UI", path: "accounts/doctype/purchase_invoice/purchase_invoice.js", nodeType: "ui", pos: { x: 50, y: 1850 }, icon: "🛒", columns: [ { name: "Get Items From -> Purchase Order" }, { name: "Get Items From -> Purchase Receipt" } ] },
+        { id: 34, name: "Purchase Invoice Logic", path: "accounts/doctype/purchase_invoice/purchase_invoice.py", nodeType: "code", pos: { x: 450, y: 3950 }, icon: "🛒", columns: [ { name: "update_stock_ledger()" } ] },
+        { id: 35, name: "Purchase Invoice Schema", path: "accounts/doctype/purchase_invoice/purchase_invoice.json", nodeType: "db", pos: { x: 850, y: 2150 }, icon: "📝", columns: [ { name: "supplier", type: "Link" }, { name: "update_stock", type: "Check" } ] },
+        { id: 36, name: "General Ledger Process", path: "(Core Process)", nodeType: "code", pos: { x: 450, y: 4250 }, icon: "📚", columns: [ { name: "make_gl_entries()" }, { name: "process_gl_map()" } ] },
+        { id: 37, name: "Stock Ledger Process", path: "(Core Process)", nodeType: "code", pos: { x: 450, y: 4550 }, icon: "📦", columns: [ ] },
+        { id: 38, name: "Payment Entry Logic", path: "accounts/doctype/payment_entry/payment_entry.py", nodeType: "code", pos: { x: 450, y: 4850 }, icon: "⚙️", columns: [ { name: "validate_reference_documents()" }, { name: "set_amounts()" }, { name: "clear_unallocated_reference_document_rows()" }, { name: "build_gl_map()" } ] },
+        { id: 39, name: "Payment Entry UI", path: "accounts/doctype/payment_entry/payment_entry_list.js", nodeType: "ui", pos: { x: 50, y: 2150 }, icon: "💻", columns: [ { name: "allocate_amount_to_references()" }, { name: "get_outstanding_reference_documents()" } ] },
+        { id: 40, name: "Payment Ledger Update", path: "(Core Process)", nodeType: "code", pos: { x: 450, y: 5150 }, icon: " ledger", columns: [ { name: "update_payment_schedule()" }, { name: "update_outstanding_on_submit()" } ] },
+        { id: 41, name: "Bank Reconciliation UI", path: "accounts/doctype/bank_reconciliation_tool/bank_reconciliation_tool.js", nodeType: "ui", pos: { x: 50, y: 2450 }, icon: "🏦", columns: [ { name: "make_reconciliation_tool()" }, { name: "Auto Reconcile" }, { name: "Get Unreconciled Entries" } ] },
+        { id: 42, name: "Bank Reconciliation Logic", path: "accounts/doctype/bank_reconciliation_tool/bank_reconciliation_tool.py", nodeType: "code", pos: { x: 450, y: 5450 }, icon: "🧠", columns: [ { name: "get_bank_transactions()" }, { name: "auto_reconcile_vouchers()" }, { name: "reconcile_vouchers()" }, { name: "create_journal_entry_bts()" }, { name: "create_payment_entry_bts()" } ] },
+        { id: 43, name: "Account Logic", path: "accounts/doctype/account/account.py", nodeType: "code", pos: { x: 450, y: 5750 }, icon: "🏛️", columns: [ { name: "merge_account()" }, { name: "update_account_number()" }, { name: "create_account_for_child_company()" } ] },
+        { id: 44, name: "Account Schema", path: "accounts/doctype/account/account.json", nodeType: "db", pos: { x: 850, y: 2450 }, icon: "📝", columns: [ { name: "account_name" }, { name: "is_group" }, { name: "parent_account" }, { name: "company" }, { name: "root_type" } ] },
+        { id: 45, name: "Chart of Accounts Tree", path: "accounts/doctype/account/account_tree.js", nodeType: "ui", pos: { x: 50, y: 2750 }, icon: "🌲", columns: [ { name: "get_tree_nodes()" }, { name: "add_tree_node()" }, { name: "get_account_balances()" } ] },
+        { id: 46, name: "CoA Template (AU)", path: "chart_of_accounts/verified/au_standard_chart_of_accounts.json", nodeType: "service", pos: { x: 1250, y: 1850 }, icon: "📄", columns: [ { name: "Assets" }, { name: "Liabilities" }, { name: "Equity" } ] },
+        { id: 47, name: "CoA Template Importer", path: "chart_of_accounts/chart_of_accounts.py", nodeType: "code", pos: { x: 450, y: 6050 }, icon: "📥", columns: [ { name: "create_charts()" }, { name: "get_charts_for_country()" }, { name: "build_tree_from_json()" } ] },
+        { id: 48, name: "Dunning Type Schema", path: "accounts/doctype/dunning_type/dunning_type.json", nodeType: "db", pos: { x: 850, y: 2750 }, icon: "📝", columns: [ { name: "dunning_fee" }, { name: "rate_of_interest" }, { name: "income_account" } ] },
+        { id: 49, name: "Dunning Process", path: "(Implied)", nodeType: "code", pos: { x: 450, y: 6350 }, icon: "🔔", columns: [ { name: "Create Dunning Letter" }, { name: "Calls -> get_payment_entry()" } ] },
+        { id: 50, name: "Payment Entry Tests", path: "accounts/doctype/payment_entry/test_payment_entry.py", nodeType: "service", pos: { x: 1250, y: 2150 }, icon: "🧪", columns: [ { name: "test_payment_entry_against_order()" }, { name: "test_payment_entry_against_si_usd_to_inr()" }, { name: "test_payment_entry_against_payment_terms()" }, { name: "test_reverse_payment_reconciliation()" } ] },
+        { id: 51, name: "POS Invoice Item Schema", path: "accounts/doctype/pos_invoice_item/pos_invoice_item.json", nodeType: "db", pos: { x: 850, y: 3050 }, icon: "🛒", columns: [ { name: "item_code" }, { name: "qty" }, { name: "rate" } ] },
+        { id: 52, name: "Accounting Dimension Detail Schema", path: "accounts/doctype/accounting_dimension_detail.json", nodeType: "db", pos: { x: 850, y: 3350 }, icon: "🔗", columns: [ { name: "default_dimension" } ] },
+        { id: 53, name: "Mode of Payment Account Schema", path: "accounts/doctype/mode_of_payment_account.json", nodeType: "db", pos: { x: 850, y: 3650 }, icon: "🔗", columns: [ { name: "default_account" } ] },
+        { id: 54, name: "Germany - SKR 03", path: "verified/de_skr03.json", nodeType: "db", pos: { x: 850, y: 3950 }, icon: "🇩🇪", columns: [ { name: "ANLAGE- UND KAPITALVERMÖGEN" }, { name: "UMLAUFVERMÖGEN" }, { name: "ERTRÄGE" } ] },
+        { id: 55, name: "Algeria - Plan Comptable", path: "verified/dz_plan_comptable_general_avec_code.json", nodeType: "db", pos: { x: 850, y: 4250 }, icon: "🇩🇿", columns: [ { name: "CLASSE 1 : CAPITAUX" }, { name: "CLASSE 2 : IMMOBILISATIONS" }, { name: "CLASSE 6 : CHARGES" } ] },
+        { id: 56, name: "El Salvador - Standard", path: "verified/el_salvador_standard.json", nodeType: "db", pos: { x: 850, y: 4550 }, icon: "🇸🇻", columns: [ { name: "ACTIVOS" }, { name: "PASIVOS" }, { name: "PATRIMONIO" } ] },
+        { id: 57, name: "France - Associatif", path: "verified/fr_plan_comptable_associatif_avec_code.json", nodeType: "db", pos: { x: 850, y: 4850 }, icon: "🇫🇷", columns: [ { name: "Comptes de Capitaux" }, { name: "Comptes de Charges" }, { name: "Comptes de Produits" } ] },
+        { id: 58, name: "France - General", path: "verified/fr_plan_comptable_general.json", nodeType: "db", pos: { x: 850, y: 5150 }, icon: "🇫🇷", columns: [ { name: "1-Comptes de Capitaux" }, { name: "6-Comptes de Charges" }, { name: "7-Comptes de Produits" } ] },
+        { id: 59, name: "Gabon - Syscohada", path: "verified/ga_plan_comptable.json", nodeType: "db", pos: { x: 850, y: 5450 }, icon: "🇬🇦", columns: [ { name: "1-Comptes de ressources durables" }, { name: "6-Comptes de charges" }, { name: "7-Comptes de produits" } ] },
+        { id: 60, name: "Guinea - Syscohada", path: "verified/gn_plan_comptable.json", nodeType: "db", pos: { x: 850, y: 5750 }, icon: "🇬🇳", columns: [ ] },
+        { id: 61, name: "Equatorial Guinea - Syscohada", path: "verified/gq_plan_comptable.json", nodeType: "db", pos: { x: 850, y: 6050 }, icon: "🇬🇶", columns: [ ] },
+        { id: 62, name: "Hungary - Standard", path: "verified/hu_chart_of_accounts.json", nodeType: "db", pos: { x: 850, y: 6350 }, icon: "🇭🇺", columns: [ { name: "1. BEFEKTETETT ESZKÖZÖK" }, { name: "5. KÖLTSÉGNEMEK" }, { name: "9. BEVÉTELEK" } ] },
+        { id: 63, name: "Hungary - Microenterprises", path: "verified/hu_chart_of_accounts_for_microenterprises_with_account_number.json", nodeType: "db", pos: { x: 850, y: 6650 }, icon: "🇭🇺", columns: [ { name: "BEFEKTETETT ESZKÖZÖK" }, { name: "FORRÁSOK" }, { name: "KÖLTSÉGNEMEK" } ] },
+        { id: 64, name: "Indonesia - Standard", path: "verified/id_chart_of_accounts.json", nodeType: "db", pos: { x: 850, y: 6950 }, icon: "🇮🇩", columns: [ { name: "Aktiva" }, { name: "Passiva" }, { name: "Beban" } ] },
+        { id: 65, name: "Comoros - Syscohada", path: "verified/km_plan_comptable.json", nodeType: "db", pos: { x: 850, y: 7250 }, icon: "🇰🇲", columns: [ ] },
+        { id: 66, name: "Mali - Syscohada", path: "verified/ml_plan_comptable.json", nodeType: "db", pos: { x: 850, y: 7550 }, icon: "🇲🇱", columns: [ ] },
+        { id: 67, name: "Mexico - Plan de Cuentas", path: "verified/mx_plan_de_cuentas.json", nodeType: "db", pos: { x: 850, y: 7850 }, icon: "🇲🇽", columns: [ { name: "ACTIVO" }, { name: "PASIVO" }, { name: "CAPITAL" } ] },
+        { id: 68, name: "Niger - Syscohada", path: "verified/ne_plan_comptable.json", nodeType: "db", pos: { x: 850, y: 8150 }, icon: "🇳🇪", columns: [ ] },
+        { id: 69, name: "Netherlands - Grootboekschema", path: "verified/nl_grootboekschema.json", nodeType: "db", pos: { x: 850, y: 8450 }, icon: "🇳🇱", columns: [ { name: "VASTE ACTIVA" }, { name: "KORTLOPENDE SCHULDEN" }, { name: "FABRIKAGEREKENINGEN" } ] },
+        { id: 70, name: "Portugal - Plano de Contas SNC", path: "verified/pt_pt_chart_template.json", nodeType: "db", pos: { x: 850, y: 8750 }, icon: "🇵🇹", columns: [ { name: "1 - Meios financeiros líquidos" }, { name: "5 - Capital, reservas" }, { name: "6 - Gastos" } ] },
+        { id: 71, name: "India - Standard", path: "verified/in_standard_chart_of_accounts.json", nodeType: "db", pos: { x: 850, y: 9050 }, icon: "🇮🇳", columns: [ { name: "Application of Funds (Assets)" }, { name: "Source of Funds (Liabilities)" }, { name: "Expenses" } ] },
+        { id: 72, name: "Standard CoA Template", path: "verified/standard_chart_of_accounts.py", nodeType: "code", pos: { x: 450, y: 6650 }, icon: "🐍", columns: [ { name: "get()" } ] },
+        { id: 73, name: "Standard CoA (with Numbers)", path: "verified/standard_chart_of_accounts_with_account_number.py", nodeType: "code", pos: { x: 450, y: 6950 }, icon: "🐍", columns: [ { name: "1000 - Application of Funds" }, { name: "2000 - Source of Funds" } ] },
+        { id: 74, name: "Syscohada CoA Generator", path: "verified/syscohada_chart_of_accounts.py", nodeType: "code", pos: { x: 450, y: 7250 }, icon: "⚙️", columns: [ { name: "syscohada_countries = [...]" }, { name: "Generates charts for 17 countries" } ] },
+        { id: 75, name: "Syscohada Generic Template", path: "verified/syscohada_plan_comptable.json", nodeType: "db", pos: { x: 850, y: 9350 }, icon: "📄", columns: [ { name: "2-Comptes d’actif immobilisé" }, { name: "6-Comptes de charges..." } ] },
+        { id: 76, name: "Senegal - Syscohada CoA", path: "verified/sn_plan_comptable.json", nodeType: "db", pos: { x: 850, y: 9650 }, icon: "🇸🇳", columns: [ { name: "root_type: Equity" }, { name: "root_type: Asset" } ] },
+        { id: 77, name: "Chad - Syscohada CoA", path: "verified/td_plan_comptable.json", nodeType: "db", pos: { x: 850, y: 9950 }, icon: "🇹🇩", columns: [ ] },
+        { id: 78, name: "Togo - Syscohada CoA", path: "verified/tg_plan_comptable.json", nodeType: "db", pos: { x: 850, y: 10250 }, icon: "🇹🇬", columns: [ ] },
+        { id: 79, name: "Sweden - BAS 2024", path: "verified/se_kontoplan_BAS_2024_with_account_number.json", nodeType: "db", pos: { x: 850, y: 10550 }, icon: "🇸🇪", columns: [ { name: "1 Tillgångar" }, { name: "2 Eget Kapital och Skulder" }, { name: "3 Rörelsens inkomster/intäkter" } ] },
+        { id: 80, name: "Singapore - Default CoA", path: "verified/sg_default_coa.json", nodeType: "db", pos: { x: 850, y: 10850 }, icon: "🇸🇬", columns: [ { name: "Expenses-Operating" } ] },
+        { id: 81, name: "Singapore - F&B CoA", path: "verified/sg_fnb_coa.json", nodeType: "db", pos: { x: 850, y: 11150 }, icon: "🇸🇬", columns: [ { name: "COS-Food" }, { name: "COS-Beverage" } ] },
+        { id: 82, name: "Turkey - Chart of Accounts", path: "verified/tr_chart_of_accounts.json", nodeType: "db", pos: { x: 850, y: 11450 }, icon: "🇹🇷", columns: [ { name: "DÖNEN VARLIKLAR (Current Assets)" }, { name: "DURAN VARLIKLAR (Fixed Assets)" }, { name: "KISA VADELİ YABANCI KAYNAKLAR" }, { name: "NAZIM HESAPLAR" } ] },
+        { id: 83, name: "Taiwan - Chart of Accounts", path: "verified/tw_chart_of_accounts.json", nodeType: "db", pos: { x: 850, y: 11750 }, icon: "🇹🇼", columns: [ { name: "所得稅費用(利益)" }, { name: "業主權益" }, { name: "營業外收入及費用" }, { name: "營業成本" }, { name: "營業收入" }, { name: "營業費用" }, { name: "負債" }, { name: "資產" }, { name: "非經常營業損益" } ] },
+        { id: 84, name: "Austria - Chart of Accounts", path: "unverified/at_austria_chart_template.json", nodeType: "db", pos: { x: 850, y: 12050 }, icon: "🇦🇹", columns: [ { name: "Klasse 0 Aktiva: Anlagevermögen" }, { name: "Klasse 1 Aktiva: Vorräte" }, { name: "Klasse 3 Passiva: Verbindlichkeiten" }, { name: "Klasse 2 Aktiva: Umlaufvermögen, Rechnungsabgrenzungen" }, { name: "Klasse 4: Betriebliche Erträge" } ] },
+        { id: 85, name: "Belgian - PCMN", path: "unverified/be_l10nbe_chart_template.json", nodeType: "db", pos: { x: 850, y: 12350 }, icon: "🇧🇪", columns: [ { name: "CLASSE 1" }, { name: "CLASSE 2. FRAIS D'ETABLISSEMENT..." }, { name: "CLASSE 3. STOCK ET COMMANDES..." }, { name: "CLASSE 4. CREANCES ET DETTES..." }, { name: "CLASSE 5. PLACEMENTS DE TRESORERIE..." }, { name: "CLASSE 6. - CHARGES" }, { name: "CLASSE 7. - PRODUITS" } ] },
+        { id: 86, name: "Switzerland - Plan comptable STERCHI", path: "unverified/ch_l10nch_chart_template.json", nodeType: "db", pos: { x: 850, y: 12650 }, icon: "🇨🇭", columns: [ { name: "Actif" }, { name: "Passif" }, { name: "Autres charges d'exploitation" }, { name: "Charges de matières, marchandises et services" }, { name: "Charges de personnel" } ] },
+        { id: 87, name: "Chile - Plan de Cuentas", path: "unverified/cl_cl_chart_template.json", nodeType: "db", pos: { x: 850, y: 12950 }, icon: "🇨🇱", columns: [ { name: "Cuentas de Movimiento" }, { name: "Cuentas de Orden" }, { name: "Cuentas de Resultado" }, { name: "inventario del Balance General" } ] },
+        { id: 88, name: "China - Chart of Accounts", path: "unverified/cn_l10n_chart_china.json", nodeType: "db", pos: { x: 850, y: 13250 }, icon: "🇨🇳", columns: [ { name: "主营业务成本" }, { name: "主营业务收入" }, { name: "交易性金融负债" }, { name: "交易性金融资产" } ] },
+        { id: 89, name: "Costa Rica - Chart of Accounts 1", path: "unverified/cr_account_chart_template_0.json", nodeType: "db", pos: { x: 850, y: 13550 }, icon: "🇨🇷", columns: [ { name: "0-Activo" }, { name: "0-Gastos" }, { name: "0-Ingresos" }, { name: "0-Pasivo" }, { name: "0-Patrimonio" } ] },
+        { id: 90, name: "Costa Rica - Chart of Accounts 2", path: "unverified/cr_account_chart_template_x.json", nodeType: "db", pos: { x: 850, y: 13850 }, icon: "🇨🇷", columns: [ { name: "xActivo" }, { name: "xGastos" }, { name: "xIngresos" }, { name: "xPasivo" }, { name: "xPatrimonio" } ] },
+        { id: 91, name: "Germany - Kontenplan SKR03", path: "unverified/de_l10n_de_chart_template.json", nodeType: "db", pos: { x: 850, y: 14150 }, icon: "🇩🇪", columns: [ { name: "Aktiva" }, { name: "Passiva" }, { name: "Ergebnis vor Steuern" }, { name: "Steuern Eink.u.Ertr" }, { name: "Vortrags- Kapital- und Statistische Konten" } ] },
+        { id: 92, name: "Ecuador - Chart of Accounts", path: "unverified/ec_ec_chart_template.json", nodeType: "db", pos: { x: 850, y: 14450 }, icon: "🇪🇨", columns: [ { name: "ACTIVO CORRIENTE" }, { name: "ACTIVOS BIOLOGICOS" }, { name: "ACTIVOS FINANCIEROS" }, { name: "ACTIVOS NO CORRIENTES" } ] },
+        { id: 93, name: "Spain - PGCE común", path: "unverified/es_account_chart_template_common.json", nodeType: "db", pos: { x: 850, y: 14750 }, icon: "🇪🇸", columns: [ { name: "Acreedores y deudores..." }, { name: "Activo no corriente" }, { name: "Compras y gastos" }, { name: "Cuentas financieras" }, { name: "Existencias" } ] },
+        { id: 94, name: "Ethiopia - Chart of Accounts", path: "unverified/et_l10n_et.json", nodeType: "db", pos: { x: 850, y: 15050 }, icon: "🇪🇹", columns: [ { name: "ASSETS" }, { name: "COST OF GOODS SOLD" }, { name: "EXPENSES" }, { name: "LIABILITIES" }, { name: "NET ASSETS/EQUITY" }, { name: "REVENUE" } ] },
+        { id: 95, name: "Greece - Chart of Accounts", path: "unverified/gr_l10n_gr_chart_template.json", nodeType: "db", pos: { x: 850, y: 15350 }, icon: "🇬🇷", columns: [ { name: "ΑΠΑΙΤΗΣΕΙΣ ΚΑΙ ΔΙΑΘΕΣΙΜΑ" }, { name: "ΑΠΟΘΕΜΑΤΑ" }, { name: "ΒΡΑΧΥΠΡΟΘΕΣΜΕΣ ΥΠΟΧΡΕΩΣΕΙΣ" }, { name: "ΚΑΘΑΡΗ ΘΕΣΗ - ΠΡΟΒΛΕΨΕΙΣ -ΜΑΚΡ/ΣΜΕΣ ΥΠΟΧΡΕΩΣΕΙΣ" } ] },
+        { id: 96, name: "Honduras - Plantilla de cuentas", path: "unverified/hn_cuentas_plantilla.json", nodeType: "db", pos: { x: 850, y: 15650 }, icon: "🇭🇳", columns: [ { name: "Activo" }, { name: "Pasivo" }, { name: "Patrimonio" }, { name: "Egresos" }, { name: "Gastos" }, { name: "Ingresos" } ] },
+        { id: 97, name: "Croatia - RRIF-ov računski plan", path: "unverified/hr_l10n_hr_chart_template_rrif.json", nodeType: "db", pos: { x: 850, y: 15950 }, icon: "🇭🇷", columns: [ { name: "FINANCIJSKI REZULTAT POSLOVANJA" }, { name: "KAPITAL I PRIČUVE TE IZVANBILANČNI ZAPISI" }, { name: "KRATKOROČNE I DUGOROČNE OBVEZE..." } ] },
+        { id: 98, name: "Italy - Generic Chart of Accounts", path: "unverified/it_l10n_it_chart_template_generic.json", nodeType: "db", pos: { x: 850, y: 16250 }, icon: "🇮🇹", columns: [ { name: "ATTIVO" }, { name: "CONTI DI RISULTATO" }, { name: "COSTI DELLA PRODUZIONE" }, { name: "IMPOSTE DELL'ESERCIZIO" }, { name: "PASSIVO" } ] },
+        { id: 99, name: "Morocco - Compta Kazacube", path: "unverified/ma_l10n_kzc_temp_chart.json", nodeType: "db", pos: { x: 850, y: 16550 }, icon: "🇲🇦", columns: [ { name: "COMPTES DE BILAN" }, { name: "COMPTES DE GESTION" }, { name: "COMPTES DE RESULTATS" } ] },
+        { id: 100, name: "Panama - Plan de Cuentas", path: "unverified/pa_l10npa_chart_template.json", nodeType: "db", pos: { x: 850, y: 16850 }, icon: "🇵🇦", columns: [ { name: "ACTIVOS" }, { name: "PASIVOS" }, { name: "PATRIMONIO" }, { name: "CUENTAS DE ORDEN ACREEDORAS" }, { name: "CUENTAS DE ORDEN DEUDORAS" } ] },
+        { id: 101, name: "Peru - Plan de Cuentas", path: "unverified/pe_pe_chart_template.json", nodeType: "db", pos: { x: 850, y: 17150 }, icon: "🇵🇪", columns: [ { name: "Cuentas de Balance" }, { name: "Cuentas de Centros de Costo" }, { name: "Cuentas de Ganancias y Perdidas" }, { name: "CONTABILIDAD DE COSTOS (cont.)" } ] },
+        { id: 102, name: "Poland - Plan kont", path: "unverified/pl_pl_chart_template.json", nodeType: "db", pos: { x: 850, y: 17450 }, icon: "🇵🇱", columns: [ { name: "Aktywa Trwałe" }, { name: "Kapitały własne i wynik finansowy" }, { name: "Koszty według rodzajów i ich rozliczenie" } ] },
+        { id: 103, name: "Portugal - Template do Plano de Contas SNC", path: "unverified/pt_pt_chart_template.json", nodeType: "db", pos: { x: 850, y: 17750 }, icon: "🇵🇹", columns: [ { name: "Capital, reservas e resultados transitados" }, { name: "Contas a receber e a pagar" }, { name: "Gastos" }, { name: "Inventários e activos biológicos" } ] },
+        { id: 104, name: "Romania - Chart of Accounts", path: "unverified/ro_ro_chart_template.json", nodeType: "db", pos: { x: 850, y: 18050 }, icon: "🇷🇴", columns: [ { name: "CONTURI FINANCIARE" }, { name: "CONTURI IN AFARA BILANTULUI" } ] },
+        { id: 105, name: "Syscohada - Plan de compte", path: "unverified/syscohada_syscohada_chart_template.json", nodeType: "db", pos: { x: 850, y: 18350 }, icon: "🌍", columns: [ { name: "Comptes de bilan" }, { name: "Comptes de gestion" } ] },
+        { id: 106, name: "Thailand CoA", path: "unverified/th_chart.json", nodeType: "db", pos: { x: 850, y: 18650 }, icon: "🇹🇭", columns: [ ] },
+        { id: 107, name: "Uruguay CoA", path: "unverified/uy_uy_chart_template.json", nodeType: "db", pos: { x: 850, y: 18950 }, icon: "🇺🇾", columns: [ ] },
+        { id: 108, name: "Venezuela CoA", path: "unverified/ve_ve_chart_template_amd.json", nodeType: "db", pos: { x: 850, y: 19250 }, icon: "🇻🇪", columns: [ ] },
+        { id: 109, name: "Item Tax Template", path: "doctype/item_tax_template/item_tax_template.py", nodeType: "code", pos: { x: 450, y: 7550 }, icon: "🏷️", columns: [ { name: "autoname()" } ] },
+        { id: 110, name: "Item Tax Template Schema", path: "doctype/item_tax_template/item_tax_template.json", nodeType: "db", pos: { x: 850, y: 19550 }, icon: "📝", columns: [ { name: "title" }, { name: "taxes", type: "Table" } ] },
+        { id: 111, name: "Budget", path: "doctype/budget/budget.py", nodeType: "code", pos: { x: 450, y: 7850 }, icon: "🎯", columns: [ { name: "validate_expense_against_budget()" } ] },
+        { id: 112, name: "Budget Schema", path: "doctype/budget/budget.json", nodeType: "db", pos: { x: 850, y: 19850 }, icon: "📝", columns: [ { name: "budget_against" }, { name: "fiscal_year" }, { name: "accounts", type: "Table" } ] },
+        { id: 113, name: "Payment Reconciliation Tool", path: "doctype/payment_reconciliation/payment_reconciliation.py", nodeType: "code", pos: { x: 450, y: 8150 }, icon: "🤝", columns: [ { name: "get_unreconciled_entries()" }, { name: "allocate_entries()" }, { name: "reconcile()" } ] },
+        { id: 114, name: "Payment Reconciliation UI", path: "doctype/payment_reconciliation/payment_reconciliation.js", nodeType: "ui", pos: { x: 50, y: 3050 }, icon: "💻", columns: [ { name: "reconcile()" } ] },
+        { id: 115, name: "CoA Importer", path: "doctype/chart_of_accounts_importer/chart_of_accounts_importer.py", nodeType: "service", pos: { x: 1250, y: 2450 }, icon: "📥", columns: [ { name: "import_coa()" }, { name: "download_template()" }, { name: "get_coa() (for tree)" } ] },
+        { id: 116, name: "Repost Accounting Ledger", path: "doctype/repost_accounting_ledger/repost_accounting_ledger.py", nodeType: "service", pos: { x: 1250, y: 2750 }, icon: "🔁", columns: [ { name: "on_submit() -> start_repost()" }, { name: "generate_preview()" } ] },
+        { id: 117, name: "Project", path: "doctype/project/project.py", nodeType: "code", pos: { x: 450, y: 8450 }, icon: "🏗️", columns: [ { name: "update_costing()" }, { name: "update_percent_complete()" } ] },
+        { id: 118, name: "Project Schema", path: "doctype/project/project.json", nodeType: "db", pos: { x: 850, y: 20150 }, icon: "📝", columns: [ { name: "project_name" }, { name: "customer" }, { name: "users", type: "Table" } ] },
+        { id: 119, name: "Task", path: "doctype/task/task.py", nodeType: "code", pos: { x: 450, y: 8750 }, icon: "✅", columns: [ { name: "update_project()" }, { name: "make_timesheet()" } ] },
+        { id: 120, name: "Task Schema", path: "doctype/task/task.json", nodeType: "db", pos: { x: 850, y: 20450 }, icon: "📝", columns: [ { name: "subject" }, { name: "project" }, { name: "depends_on", type: "Table" } ] },
+        { id: 121, name: "Timesheet", path: "doctype/timesheet/timesheet.py", nodeType: "code", pos: { x: 450, y: 9050 }, icon: "⏱️", columns: [ { name: "make_sales_invoice()" }, { name: "update_task_and_project()" } ] },
+        { id: 122, name: "Timesheet Schema", path: "doctype/timesheet/timesheet.json", nodeType: "db", pos: { x: 850, y: 20750 }, icon: "📝", columns: [ { name: "employee" }, { name: "time_logs", type: "Table" } ] },
+        { id: 123, name: "General Ledger Report", path: "report/general_ledger/general_ledger.py", nodeType: "code", pos: { x: 450, y: 9350 }, icon: "📊", columns: [ { name: "execute()" }, { name: "get_gl_entries()" } ] },
+        { id: 124, name: "Trial Balance Report", path: "report/trial_balance/trial_balance.py", nodeType: "code", pos: { x: 450, y: 9650 }, icon: "📊", columns: [ { name: "get_opening_balances()" } ] },
+        { id: 125, name: "Gross Profit Report", path: "report/gross_profit/gross_profit.py", nodeType: "code", pos: { x: 450, y: 9950 }, icon: "📊", columns: [ { name: "get_buying_amount()" } ] },
+        { id: 126, name: "Accounts Receivable Report", path: "report/accounts_receivable/accounts_receivable.py", nodeType: "code", pos: { x: 450, y: 10250 }, icon: "📊", columns: [ { name: "get_invoice_details()" } ] },
+        { id: 127, name: "Financial Statements", path: "report/financial_statements.py", nodeType: "code", pos: { x: 450, y: 10550 }, icon: "📚", columns: [ { name: "get_data()" }, { name: "set_gl_entries_by_account()" } ] },
+        { id: 128, name: "GL Entry", path: "(Core DocType)", nodeType: "db", pos: { x: 850, y: 21050 }, icon: "🧾", columns: [ { name: "posting_date" }, { name: "account" }, { name: "debit" }, { name: "credit" } ] },
+        { id: 129, name: "Standard CoA Template", path: "chart_of_accounts/unverified/standard_chart_of_accounts.py", nodeType: "code", pos: { x: 450, y: 10850 }, icon: "🐍", columns: [ ] },
+        { id: 130, name: "Standard CoA (with Numbers)", path: "chart_of_accounts/unverified/standard_chart_of_accounts_with_account_number.py", nodeType: "code", pos: { x: 450, y: 11150 }, icon: "🐍", columns: [ ] },
+        { id: 131, name: "Syscohada CoA Generator", path: "chart_of_accounts/unverified/syscohada_chart_of_accounts.py", nodeType: "code", pos: { x: 450, y: 11450 }, icon: "⚙️", columns: [ ] }
+    ],
+    relationships: [
+        { from: { table: "pyproject.toml" }, to: { table: "hooks.py" } },
+        { from: { table: ".pre-commit-config.yaml" }, to: { table: "pyproject.toml" } },
+        { from: { table: "hooks.py", column: "doc_events" }, to: { table: "SalesInvoice" } },
+        { from: { table: "hooks.py", column: "app_include_js" }, to: { table: "Sales Invoice UI" } },
+        { from: { table: "POSInvoice" }, to: { table: "SalesInvoice" } },
+        { from: { table: "SalesInvoice", column: "get_gl_entries()" }, to: { table: "general_ledger.py", column: "make_gl_entries()" } },
+        { from: { table: "SalesInvoice", column: "on_cancel()" }, to: { table: "general_ledger.py", column: "make_reverse_gl_entries()" } },
+        { from: { table: "SalesInvoice", column: "validate()" }, to: { table: "party.py", column: "get_party_details()" } },
+        { from: { table: "SalesInvoice", column: "validate()" }, to: { table: "accounts_utils.py", column: "get_balance_on()" } },
+        { from: { table: "POSInvoice", column: "set_pos_fields()" }, to: { table: "party.py", column: "get_party_details()" } },
+        { from: { table: "general_ledger.py", column: "make_gl_entries()" }, to: { table: "accounts_utils.py", column: "create_payment_ledger_entry()" } },
+        { from: { table: "SalesInvoice", column: "validate()" }, to: { table: "PricingRule", column: "apply_pricing_rule()" } },
+        { from: { table: "Subscription", column: "generate_invoice()" }, to: { table: "SalesInvoice" } },
+        { from: { table: "Sales Invoice UI" }, to: { table: "Sales Invoice Schema" } },
+        { from: { table: "POS Invoice UI" }, to: { table: "POS Invoice Schema" } },
+        { from: { table: "Sales Invoice UI", column: "customer()" }, to: { table: "party.py", column: "get_party_details()" } },
+        { from: { table: "POS Invoice UI", column: "set_pos_data()" }, to: { table: "POSInvoice", column: "set_missing_values()" } },
+        { from: { table: "Book Appointment Logic", column: "submit()" }, to: { table: "book_appointment.py", column: "create_appointment()" } },
+        { from: { table: "Book Appointment Logic", column: "update_time_slots()" }, to: { table: "book_appointment.py", column: "get_appointment_slots()" } },
+        { from: { table: "Book Appointment Page" }, to: { table: "Book Appointment Logic" } },
+        { from: { table: "Bank Statement Import UI", column: "convert_mt940_to_csv()" }, to: { table: "Bank Statement Import Logic", column: "convert_mt940_to_csv()" } },
+        { from: { table: "Bank Statement Import UI" }, to: { table: "Bank Statement Import Schema" } },
+        { from: { table: "Bank Statement Import Logic", column: "class BankStatementImport(DataImport)" }, to: { table: "MT940 Library", column: "mt940.parse()" } },
+        { from: { table: "Bank Statement Import Logic", column: "start_import() -> (background job)" }, to: { table: "Bank Transaction Schema" } },
+        { from: { table: "Payment Request UI", column: "Create Payment Entry" }, to: { table: "Payment Request Logic", column: "set_as_paid() -> create_payment_entry()" } },
+        { from: { table: "Payment Request Logic", column: "set_as_paid() -> create_payment_entry()" }, to: { table: "Payment Entry Schema" } },
+        { from: { table: "Payment Request UI", column: "is_a_subscription" }, to: { table: "Payment Request Schema", column: "is_a_subscription" } },
+        { from: { table: "Payment Request Schema", column: "subscription_plans" }, to: { table: "Subscription Plan Schema" } },
+        { from: { table: "Payment Request Logic", column: "create_subscription()" }, to: { table: "Subscription Plan Schema" } },
+        { from: { table: "POS Closing Entry Logic", column: "on_submit() -> consolidate_pos_invoices()" }, to: { table: "POS Invoice Merge Log Logic", column: "consolidate_pos_invoices()" } },
+        { from: { table: "POS Invoice Merge Log Logic", column: "on_submit() -> process_merging_into_sales_invoice()" }, to: { table: "SalesInvoice" } },
+        { from: { table: "Purchase Invoice Logic", column: "make_gl_entries()" }, to: { table: "General Ledger Process", column: "make_gl_entries()" } },
+        { from: { table: "Purchase Invoice Logic", column: "update_stock_ledger()" }, to: { table: "Stock Ledger Process", column: "update_stock_ledger()" } },
+        { from: { table: "Purchase Invoice UI" }, to: { table: "Purchase Invoice Logic" } },
+        { from: { table: "Purchase Invoice Logic" }, to: { table: "Purchase Invoice Schema" } },
+        { from: { table: "Payment Entry UI" }, to: { table: "Payment Entry Logic" } },
+        { from: { table: "Payment Entry Logic", column: "make_gl_entries()" }, to: { table: "General Ledger Process" } },
+        { from: { table: "Payment Entry Logic", column: "on_submit()" }, to: { table: "Payment Ledger Update" } },
+        { from: { table: "Payment Entry Logic" }, to: { table: "Payment Entry Schema" } },
+        { from: { table: "Payment Entry Tests" }, to: { table: "Payment Entry Logic" } },
+        { from: { table: "Bank Reconciliation UI" }, to: { table: "Bank Reconciliation Logic" } },
+        { from: { table: "Bank Reconciliation Logic", column: "get_bank_transactions()" }, to: { table: "Bank Transaction Schema" } },
+        { from: { table: "Bank Reconciliation Logic", column: "reconcile_vouchers()" }, to: { table: "Bank Transaction Schema" } },
+        { from: { table: "Bank Reconciliation Logic", column: "create_payment_entry_bts()" }, to: { table: "Payment Entry Logic" } },
+        { from: { table: "Bank Reconciliation Logic", column: "create_journal_entry_bts()" }, to: { table: "General Ledger Process" } },
+        { from: { table: "Chart of Accounts Tree" }, to: { table: "Account Logic" } },
+        { from: { table: "Account Logic" }, to: { table: "Account Schema" } },
+        { from: { table: "CoA Template Importer", column: "create_charts()" }, to: { table: "Account Logic" } },
+        { from: { table: "CoA Template Importer", column: "get_charts_for_country()" }, to: { table: "CoA Template (AU)" } },
+        { from: { table: "CoA Template Importer", column: "build_tree_from_json()" }, to: { table: "CoA Template (AU)" } },
+        { from: { table: "Dunning Process" }, to: { table: "Dunning Type Schema" } },
+        { from: { table: "Dunning Process", column: "Calls -> get_payment_entry()" }, to: { table: "Payment Entry Logic" } },
+        { from: { table: "Syscohada CoA Generator" }, to: { table: "Syscohada Generic Template" } },
+        { from: { table: "Syscohada CoA Generator" }, to: { table: "Senegal - Syscohada CoA" } },
+        { from: { table: "Syscohada CoA Generator" }, to: { table: "Chad - Syscohada CoA" } },
+        { from: { table: "Syscohada CoA Generator" }, to: { table: "Togo - Syscohada CoA" } },
+        { from: { table: "CoA Importer" }, to: { table: "Account Logic", name: "(Core Account Creation)" } },
+        { from: { table: "Repost Accounting Ledger" }, to: { table: "GL Entry" } },
+        { from: { table: "Budget", column: "validate_expense_against_budget()" }, to: { table: "GL Entry" } },
+        { from: { table: "Payment Reconciliation Tool", column: "get_unreconciled_entries()" }, to: { table: "GL Entry" } },
+        { from: { table: "Payment Reconciliation Tool", column: "reconcile()" }, to: { table: "GL Entry" } },
+        { from: { table: "Project", column: "copy_from_template()" }, to: { table: "Task" } },
+        { from: { table: "Task", column: "update_project()" }, to: { table: "Project" } },
+        { from: { table: "Timesheet", column: "update_task_and_project()" }, to: { table: "Task" } },
+        { from: { table: "Timesheet", column: "update_task_and_project()" }, to: { table: "Project" } },
+        { from: { table: "Timesheet", column: "make_sales_invoice()" }, to: { table: "SalesInvoice", name: "(Not in chunk)" } },
+        { from: { table: "Task", column: "make_timesheet()" }, to: { table: "Timesheet" } },
+        { from: { table: "Task Schema", column: "depends_on" }, to: { table: "Task Schema" } },
+        { from: { table: "General Ledger Report" }, to: { table: "GL Entry" } },
+        { from: { table: "Trial Balance Report" }, to: { table: "GL Entry" } },
+        { from: { table: "Accounts Receivable Report" }, to: { table: "GL Entry" } },
+        { from: { table: "Gross Profit Report" }, to: { table: "SalesInvoice", name: "(Not in chunk)" } },
+        { from: { table: "Financial Statements" }, to: { table: "GL Entry" } }
+    ]
+};
+
+
+// ===================================================================================
+//  RENDERING LOGIC
+// ===================================================================================
+function initializeCanvas(canvasId, schema) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const transformContainer = canvas.querySelector('.transform-container');
+    const svg = canvas.querySelector('.connections');
+    let state = { scale: 0.7, panX: 50, panY: 50, isPanning: false, lastMouse: { x: 0, y: 0 } };
+
+    function render() {
+        if (!transformContainer || !svg) return;
+        transformContainer.innerHTML = '';
+        transformContainer.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+        
+        schema.tables.forEach(table => {
+            const node = document.createElement('div');
+            node.id = `${canvasId}-${table.id}`;
+            node.classList.add('node', `${table.nodeType}-node`);
+            node.style.left = `${table.pos.x}px`;
+            node.style.top = `${table.pos.y}px`;
+
+            const header = document.createElement('h3');
+            const pathSpan = table.path ? `<span class="path">${table.path}</span>` : '';
+            header.innerHTML = `${table.name}${pathSpan}`;
+
+            const list = document.createElement('ul');
+            list.innerHTML = table.columns.map(col => {
+                const colName = typeof col === 'string' ? col : col.name;
+                const colType = typeof col === 'string' ? '' : (col.type || '');
+                const colId = colName.replace(/\s+/g, '-').replace(/[^\w-]/g, '');
+                return `<li id="${canvasId}-${table.id}-${colId}"><span class="col-name">${colName}</span>${colType ? `<span class="col-type">${colType}</span>` : ''}</li>`;
+            }).join('');
+            
+            if (table.icon) {
+                const iconDisplay = document.createElement('div');
+                iconDisplay.className = 'icon-display';
+                iconDisplay.textContent = table.icon;
+                node.appendChild(iconDisplay);
+            }
+
+            node.appendChild(header);
+            node.appendChild(list);
+            transformContainer.appendChild(node);
+        });
+        updateConnections();
+    }
+    
+    function getElementPortPosition(elId) {
+        const el = document.getElementById(elId);
+        if (!el) return null;
+        const parentNode = el.closest('.node');
+        if (!parentNode) return null;
+        const isNodeConnection = el.classList.contains('node');
+        
+        const parentRect = parentNode.getBoundingClientRect();
+        const elRect = isNodeConnection ? parentRect : el.getBoundingClientRect();
+        const canvasRect = canvas.getBoundingClientRect();
+        
+        const y = isNodeConnection ? (parentRect.top - canvasRect.top + parentRect.height / 2) : (elRect.top - canvasRect.top + elRect.height / 2);
+        const leftX = (parentRect.left - canvasRect.left);
+        const rightX = (parentRect.right - canvasRect.left);
+
+        return { left: {x: leftX, y: y}, right: {x: rightX, y: y} };
+    }
+
+    function updateConnections() {
+        if (!svg) return;
+        svg.innerHTML = `<defs>
+            <marker id="arrowhead-read-${canvasId}" markerWidth="10" markerHeight="7" refX="8" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#6b7283" /></marker>
+            <marker id="arrowhead-write-${canvasId}" markerWidth="12" markerHeight="9" refX="10" refY="4.5" orient="auto"><polygon points="0 0, 12 4.5, 0 9" fill="#86efac" /></marker>
+            <marker id="arrowhead-flow-${canvasId}" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#9ca3af" /></marker>
+        </defs>`;
+        
+        const idMap = new Map(schema.tables.map(t => [t.name, t.id]));
+
+        schema.relationships.forEach(rel => {
+            const fromTableName = typeof rel.from === 'string' ? rel.from : rel.from.table;
+            const toTableName = typeof rel.to === 'string' ? rel.to : rel.to.table;
+
+            const fromId = idMap.get(fromTableName);
+            const toId = idMap.get(toTableName);
+            if(!fromId || !toId) return;
+
+            let fromColName = (typeof rel.from === 'object' && rel.from.column) ? (typeof rel.from.column === 'string' ? rel.from.column : (rel.from.column.name || '')) : '';
+            let toColName = (typeof rel.to === 'object' && rel.to.column) ? (typeof rel.to.column === 'string' ? rel.to.column : (rel.to.column.name || '')) : '';
+            
+            let fromElId = fromColName ? `${canvasId}-${fromId}-${fromColName.replace(/\s+/g, '-').replace(/[^\w-]/g, '')}` : `${canvasId}-${fromId}`;
+            if (!document.getElementById(fromElId)) fromElId = `${canvasId}-${fromId}`;
+
+            let toElId = toColName ? `${canvasId}-${toId}-${toColName.replace(/\s+/g, '-').replace(/[^\w-]/g, '')}` : `${canvasId}-${toId}`;
+            if (!document.getElementById(toElId)) toElId = `${canvasId}-${toId}`;
+            
+            const fromPorts = getElementPortPosition(fromElId);
+            const toPorts = getElementPortPosition(toElId);
+            if (!fromPorts || !toPorts) return;
+
+            const fromPos = toPorts.right.x < fromPorts.left.x ? fromPorts.left : fromPorts.right;
+            const toPos = toPorts.right.x < fromPorts.left.x ? toPorts.right : toPorts.left;
+            
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', fromPos.x); line.setAttribute('y1', fromPos.y);
+            line.setAttribute('x2', toPos.x); line.setAttribute('y2', toPos.y);
+
+            const type = rel.type || 'read';
+
+            if (type === 'write') {
+                line.setAttribute('stroke', '#86efac'); line.setAttribute('stroke-width', 4); line.setAttribute('marker-end', `url(#arrowhead-write-${canvasId})`);
+            } else if (type === 'flow') {
+                line.setAttribute('stroke', '#9ca3af'); line.setAttribute('stroke-width', 2); line.setAttribute('stroke-dasharray', `6,6`); line.setAttribute('marker-end', `url(#arrowhead-flow-${canvasId})`);
+            } else {
+                line.setAttribute('stroke', '#6b7283'); line.setAttribute('stroke-width', 2); line.setAttribute('marker-end', `url(#arrowhead-read-${canvasId})`);
+            }
+            svg.appendChild(line);
+        });
+    }
+    
+    let activeNode = null, offset = { x: 0, y: 0 };
+    canvas.addEventListener('mousedown', (e) => {
+        const targetNode = e.target.closest('.node');
+        if (targetNode) {
+            activeNode = targetNode;
+            const tableData = schema.tables.find(t => `${canvasId}-${t.id}` === activeNode.id);
+            if (!tableData) return;
+            const mouseX = (e.clientX - canvas.getBoundingClientRect().left - state.panX) / state.scale;
+            const mouseY = (e.clientY - canvas.getBoundingClientRect().top - state.panY) / state.scale;
+            offset.x = mouseX - tableData.pos.x;
+            offset.y = mouseY - tableData.pos.y;
+            activeNode.style.zIndex = 11;
+        } else {
+            state.isPanning = true;
+            state.lastMouse.x = e.clientX;
+            state.lastMouse.y = e.clientY;
+        }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (activeNode) {
+            e.preventDefault();
+            const mouseX = (e.clientX - canvas.getBoundingClientRect().left - state.panX) / state.scale;
+            const mouseY = (e.clientY - canvas.getBoundingClientRect().top - state.panY) / state.scale;
+            const tableData = schema.tables.find(t => `${canvasId}-${t.id}` === activeNode.id);
+            if (tableData) {
+                tableData.pos.x = mouseX - offset.x;
+                tableData.pos.y = mouseY - offset.y;
+                activeNode.style.left = `${tableData.pos.x}px`;
+                activeNode.style.top = `${tableData.pos.y}px`;
+                updateConnections();
+            }
+        } else if (state.isPanning) {
+            e.preventDefault();
+            const dx = e.clientX - state.lastMouse.x;
+            const dy = e.clientY - state.lastMouse.y;
+            state.panX += dx;
+            state.panY += dy;
+            transformContainer.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+            updateConnections();
+            state.lastMouse.x = e.clientX;
+            state.lastMouse.y = e.clientY;
+        }
+    });
+    
+    document.addEventListener('mouseup', () => {
+        if (activeNode) { activeNode.style.zIndex = 10; activeNode = null; }
+        state.isPanning = false;
+    });
+    
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
+        const oldScale = state.scale;
+        const zoomFactor = 1.1;
+        state.scale *= e.deltaY < 0 ? zoomFactor : 1 / zoomFactor;
+        state.scale = Math.max(0.1, Math.min(state.scale, 2.5));
+        state.panX = mouseX - (mouseX - state.panX) * (state.scale / oldScale);
+        state.panY = mouseY - (mouseY - state.panY) * (state.scale / oldScale);
+        render();
+    });
+
+    render();
+    return { render, updateConnections };
+}
+
+const canvases = [
+    initializeCanvas('canvas-r2', schemaR2),
+    initializeCanvas('canvas-r3', schemaR3),
+    initializeCanvas('canvas-r4', schemaR4)
+];
+
+document.querySelectorAll('.splitter').forEach(splitter => {
+    splitter.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        const prevPanel = splitter.previousElementSibling;
+        const startX = e.clientX;
+        const initialPrevWidth = prevPanel.getBoundingClientRect().width;
+        
+        const onMouseMove = (moveEvent) => {
+            let newPrevWidth = initialPrevWidth + (moveEvent.clientX - startX);
+            const MIN_WIDTH = 150;
+            if (newPrevWidth < MIN_WIDTH) newPrevWidth = MIN_WIDTH;
+            prevPanel.style.flex = `0 0 ${newPrevWidth}px`;
+            canvases.forEach(c => c && c.render());
+        };
+        const onMouseUp = () => {
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        };
+        document.addEventListener('mousemove', onMouseMove);
+        document.addEventListener('mouseup', onMouseUp);
+    });
+});
+
+window.addEventListener('resize', () => {
+    canvases.forEach(c => c && c.render());
+});
+</script>
+
+</body>
+</html>
